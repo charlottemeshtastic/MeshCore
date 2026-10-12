@@ -108,6 +108,9 @@ pio test --environment native --verbose
 
 ## Road-Map / To-Do
 
+The fork implementation plan and acceptance gates are in [Feature programme](docs/rfcs/README.md).
+Opt-in manual request APIs and companion commands are documented in [Round-trip manual paths](docs/rfcs/manual-paths.md).
+
 There are a number of fairly major features in the pipeline, with no particular time-frames attached yet. In very rough chronological order:
 - [X] Companion radio: UI redesign
 - [X] Repeater + Room Server: add ACL's (like Sensor Node has)

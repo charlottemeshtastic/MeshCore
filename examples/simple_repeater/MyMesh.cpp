@@ -1,5 +1,6 @@
 #include "MyMesh.h"
 #include <algorithm>
+#include <helpers/RoundTripRequest.h>
 
 /* ------------------------------ Config -------------------------------- */
 
@@ -196,10 +197,15 @@ uint8_t MyMesh::handleAnonClockReq(const mesh::Identity& sender, uint32_t sender
   return 0;
 }
 
-int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t *payload, size_t payload_len) {
+int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, const uint8_t *payload, size_t payload_len) {
+  if (payload_len == 0) return 0;
   // uint32_t now = getRTCClock()->getCurrentTimeUnique();
   // memcpy(reply_data, &now, 4);   // response packets always prefixed with timestamp
   memcpy(reply_data, &sender_timestamp, 4); // reflect sender_timestamp back in response packet (kind of like a 'tag')
+
+  if (payload[0] == mesh::RoundTripRequest::CAPABILITY_TYPE) {
+    return mesh::RoundTripRequest::writeCapabilities(reply_data, sizeof(reply_data), sender_timestamp);
+  }
 
   if (payload[0] == REQ_TYPE_GET_STATUS) {  // guests can also access this now
     RepeaterStats stats;
@@ -226,6 +232,7 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
     return 4 + sizeof(stats); //  reply_len
   }
   if (payload[0] == REQ_TYPE_GET_TELEMETRY_DATA) {
+    if (payload_len < 2) return 0;
     uint8_t perm_mask = ~(payload[1]); // NEW: first reserved byte (of 4), is now inverse mask to apply to permissions
 
     telemetry.reset();
@@ -248,6 +255,7 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
     return 4 + tlen; // reply_len
   }
   if (payload[0] == REQ_TYPE_GET_ACCESS_LIST && sender->isAdmin()) {
+    if (payload_len < 3) return 0;
     uint8_t res1 = payload[1];   // reserved for future  (extra query params)
     uint8_t res2 = payload[2];
     if (res1 == 0 && res2 == 0) {
@@ -262,6 +270,7 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
     }
   }
   if (payload[0] == REQ_TYPE_GET_NEIGHBOURS) {
+    if (payload_len < 7) return 0;
     uint8_t request_version = payload[1];
     if (request_version == 0) {
 
@@ -659,11 +668,21 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
   ClientInfo* client = acl.getClientByIdx(i);
 
   if (type == PAYLOAD_TYPE_REQ) { // request (from a Known admin client!)
+    if (len < 5) return;
     uint32_t timestamp;
     memcpy(&timestamp, data, 4);
 
     if (timestamp > client->last_timestamp) { // prevent replay attacks
-      int reply_len = handleRequest(client, timestamp, &data[4], len - 4);
+      const uint8_t* request = &data[4];
+      size_t request_len = len - 4;
+      mesh::RoundTripRequest::Decoded manual;
+      bool manual_reply = request[0] == mesh::RoundTripRequest::TYPE;
+      if (manual_reply) {
+        if (!packet->isRouteDirect() || !mesh::RoundTripRequest::decode(request, request_len, manual)) return;
+        request = manual.body;
+        request_len = manual.body_len;
+      }
+      int reply_len = handleRequest(client, timestamp, request, request_len);
       if (reply_len == 0) return; // invalid command
 
       client->last_timestamp = timestamp;
@@ -678,7 +697,9 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         mesh::Packet *reply =
             createDatagram(PAYLOAD_TYPE_RESPONSE, client->id, secret, reply_data, reply_len);
         if (reply) {
-          if (client->out_path_len != OUT_PATH_UNKNOWN) { // we have an out_path, so send DIRECT
+          if (manual_reply) {
+            sendDirect(reply, manual.path, manual.path_len, SERVER_RESPONSE_DELAY);
+          } else if (client->out_path_len != OUT_PATH_UNKNOWN) { // we have an out_path, so send DIRECT
             sendDirect(reply, client->out_path, client->out_path_len, SERVER_RESPONSE_DELAY);
           } else {
             sendFloodReply(reply, SERVER_RESPONSE_DELAY, packet->getPathHashSize());

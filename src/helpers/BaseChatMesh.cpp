@@ -1,5 +1,6 @@
 #include <helpers/BaseChatMesh.h>
 #include <Utils.h>
+#include "RoundTripRequest.h"
 
 #ifndef SERVER_RESPONSE_DELAY
   #define SERVER_RESPONSE_DELAY   300
@@ -286,7 +287,18 @@ void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
   } else if (type == PAYLOAD_TYPE_REQ && len > 4) {
     uint32_t sender_timestamp;
     memcpy(&sender_timestamp, data, 4);
-    uint8_t reply_len = onContactRequest(from, sender_timestamp, &data[4], len - 4, temp_buf);
+    const uint8_t* request = &data[4];
+    size_t request_len = len - 4;
+    mesh::RoundTripRequest::Decoded manual;
+    bool manual_reply = request[0] == mesh::RoundTripRequest::TYPE;
+    if (manual_reply) {
+      if (!packet->isRouteDirect() || !mesh::RoundTripRequest::decode(request, request_len, manual)) return;
+      request = manual.body;
+      request_len = manual.body_len;
+    }
+    uint8_t reply_len = request[0] == mesh::RoundTripRequest::CAPABILITY_TYPE
+      ? mesh::RoundTripRequest::writeCapabilities(temp_buf, sizeof(temp_buf), sender_timestamp)
+      : onContactRequest(from, sender_timestamp, request, request_len, temp_buf);
     if (reply_len > 0) {
       if (packet->isRouteFlood()) {
         // let this sender know path TO here, so they can use sendDirect(), and ALSO encode the response
@@ -296,7 +308,9 @@ void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
       } else {
         mesh::Packet* reply = createDatagram(PAYLOAD_TYPE_RESPONSE, from.id, secret, temp_buf, reply_len);
         if (reply) {
-          if (from.out_path_len != OUT_PATH_UNKNOWN) {  // we have an out_path, so send DIRECT
+          if (manual_reply) {
+            sendDirect(reply, manual.path, manual.path_len, SERVER_RESPONSE_DELAY);
+          } else if (from.out_path_len != OUT_PATH_UNKNOWN) {  // we have an out_path, so send DIRECT
             sendDirect(reply, from.out_path, from.out_path_len, SERVER_RESPONSE_DELAY);
           } else {
             sendFloodScoped(from, reply, SERVER_RESPONSE_DELAY);
@@ -654,6 +668,33 @@ int  BaseChatMesh::sendRequest(const ContactInfo& recipient, const uint8_t* req_
     }
   }
   return MSG_SEND_FAILED;
+}
+
+int BaseChatMesh::sendRoundTripRequest(const ContactInfo& recipient, const uint8_t* out_path, uint8_t out_path_len,
+                                     const uint8_t* reply_path, uint8_t reply_path_len,
+                                     const uint8_t* req_data, size_t data_len, uint32_t& tag, uint32_t& est_timeout) {
+  if (!mesh::Packet::isValidPathLen(out_path_len)) return MSG_SEND_FAILED;
+  size_t out_bytes = (out_path_len & 63) * ((out_path_len >> 6) + 1);
+  if (out_bytes && out_path == NULL) return MSG_SEND_FAILED;
+  uint8_t temp[MAX_PACKET_PAYLOAD];
+  size_t encoded = mesh::RoundTripRequest::encode(temp + 4, sizeof(temp) - 4,
+                                                 reply_path, reply_path_len, req_data, data_len);
+  if (encoded == 0) return MSG_SEND_FAILED;
+  uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+  memcpy(temp, &timestamp, sizeof(timestamp));
+  auto pkt = createDatagram(PAYLOAD_TYPE_REQ, recipient.id, recipient.getSharedSecret(self_id), temp, 4 + encoded);
+  if (pkt == NULL) return MSG_SEND_FAILED;
+  pkt->header |= ROUTE_TYPE_DIRECT;
+  pkt->path_len = out_path_len;
+  if (out_bytes) memcpy(pkt->path, out_path, out_bytes);
+  uint32_t airtime = _radio->getEstAirtimeFor(pkt->getRawLength());
+  uint8_t hops = (out_path_len & 63) > (reply_path_len & 63) ? (out_path_len & 63) : (reply_path_len & 63);
+  est_timeout = calcDirectTimeoutMillisFor(airtime, hops);
+  tag = timestamp;
+  // The path is already installed, including an explicit zero-hop path.
+  getTables()->markSeen(pkt);
+  sendPacket(pkt, 0, 0);
+  return MSG_SEND_SENT_DIRECT;
 }
 
 int  BaseChatMesh::sendRequest(const ContactInfo& recipient, uint8_t req_type, uint32_t& tag, uint32_t& est_timeout) {

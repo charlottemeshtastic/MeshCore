@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/RoundTripRequest.h>
 
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
@@ -1020,7 +1021,45 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
 }
 
 void MyMesh::handleCmdFrame(size_t len) {
-  if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2) { // sent when app establishes connection
+  if (len == 0 || len > sizeof(cmd_frame)) {
+    writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    return;
+  }
+  if (cmd_frame[0] == mesh::RoundTripRequest::CAPABILITY_TYPE) {
+    if (len != 1) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+      return;
+    }
+    out_frame[0] = mesh::RoundTripRequest::CAPABILITY_TYPE;
+    size_t count = mesh::RoundTripRequest::writeFeatureRecord(out_frame + 1, sizeof(out_frame) - 1);
+    _serial->writeFrame(out_frame, count + 1);
+  } else if (cmd_frame[0] == mesh::RoundTripRequest::TYPE) {
+    mesh::RoundTripRequest::Command command;
+    if (!mesh::RoundTripRequest::decodeCommand(cmd_frame, len, command)) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+      return;
+    }
+    auto recipient = lookupContactByPubKey(command.recipient, PUB_KEY_SIZE);
+    if (recipient == NULL) {
+      writeErrFrame(ERR_CODE_NOT_FOUND);
+      return;
+    }
+    uint32_t tag, timeout;
+    int result = sendRoundTripRequest(*recipient, command.out_path, command.out_path_len,
+                                     command.request.path, command.request.path_len,
+                                     command.request.body, command.request.body_len, tag, timeout);
+    if (result == MSG_SEND_FAILED) {
+      writeErrFrame(ERR_CODE_TABLE_FULL);
+      return;
+    }
+    clearPendingReqs();
+    pending_req = tag;
+    out_frame[0] = RESP_CODE_SENT;
+    out_frame[1] = 0;  // direct route
+    memcpy(out_frame + 2, &tag, 4);
+    memcpy(out_frame + 6, &timeout, 4);
+    _serial->writeFrame(out_frame, 10);
+  } else if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2) { // sent when app establishes connection
     app_target_ver = cmd_frame[1];                    // which version of protocol does app understand
 
     int i = 0;
