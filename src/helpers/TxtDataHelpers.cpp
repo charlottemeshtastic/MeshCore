@@ -1,4 +1,7 @@
 #include "TxtDataHelpers.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 void StrHelper::strncpy(char* dest, const char* src, size_t buf_sz) {
   while (buf_sz > 1 && *src) {
@@ -102,7 +105,7 @@ static void _ftoa(float f, char *p, int *status)
     *p++ = '0';
   else 
   {
-    ltoa(int_part, p, 10);
+    snprintf(p, 11, "%ld", static_cast<long>(int_part));
     while (*p)
       p++;
   }
