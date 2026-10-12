@@ -40,10 +40,11 @@ protocol is in `docs/companion_protocol.md`; it contains no Android, iOS or web 
 implementation. This programme can define firmware APIs and provide app vectors.
 Implementing app screens and persistence needs the actual app repository.
 
-The first companion extension should return a length-delimited capability record
-with a schema version and explicit feature revisions. Command numbers must be
-checked against the chosen development baseline before allocation. No command
-numbers in these proposals are assigned yet.
+The manual-request implementation adds a fixed schema-1 capability record with
+explicit feature revisions. Fork-only companion commands 0xF0 and 0xF1 provide
+manual requests and local capability queries. Authenticated peer queries use
+request type 0xF1. Other proposed command numbers remain unassigned. These fork
+allocations require review before claiming upstream interoperability.
 
 Capability records distinguish peer capability from local firmware capability.
 An app must never infer recipient support from the connected companion's support.
@@ -67,7 +68,7 @@ device reboot and packet loss. Run V1-only devices through the same topology.
    reserved and must not become active implicitly.
 3. Define sub-meshes as logical scopes on one RF configuration first, or add
    frequency scheduling? The proposal starts with one RF configuration.
-4. Pick and authenticate the capability exchange before message extensions.
+4. Review the authenticated request capability exchange before enabling text or compression extensions.
 5. Review the proposed LZW variant; fixed nine-bit codes are one bounded option.
 6. Choose radio families and explicit-header settings for CR experiments.
 7. Agree on V2 requirements and threat model before choosing its wire layout.

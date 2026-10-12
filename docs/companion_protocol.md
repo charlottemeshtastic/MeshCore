@@ -988,3 +988,11 @@ def on_notification_received(data):
 - **Messages not received**: Poll `GET_MESSAGE` command periodically
 - **Duplicate messages**: Implement message deduplication using timestamp/content as a unique id
 - **Message truncation**: Send long messages as separate shorter messages
+
+## Fork-specific manual request extension
+
+The charlottemeshtastic fork implements local capability query `0xF1` and opt-in
+manual request command `0xF0`. Their records, authenticated peer-capability query,
+path encoding and response behavior are specified in
+[Round-trip manual paths](rfcs/manual-paths.md). These are fork allocations and
+do not change the established commands or V1 packet header.

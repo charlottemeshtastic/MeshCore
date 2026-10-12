@@ -163,6 +163,12 @@ public:
   int  sendAnonReq(const ContactInfo& recipient, const uint8_t* data, uint8_t len, uint32_t& tag, uint32_t& est_timeout);
   int  sendRequest(const ContactInfo& recipient, uint8_t req_type, uint32_t& tag, uint32_t& est_timeout);
   int  sendRequest(const ContactInfo& recipient, const uint8_t* req_data, uint8_t data_len, uint32_t& tag, uint32_t& est_timeout);
+  /** Send an opt-in request over independent outbound/reply paths without changing the contact.
+   * The recipient must support RoundTripRequest revision 1. Returns MSG_SEND_FAILED on invalid input.
+   */
+  int sendRoundTripRequest(const ContactInfo& recipient, const uint8_t* out_path, uint8_t out_path_len,
+                          const uint8_t* reply_path, uint8_t reply_path_len,
+                          const uint8_t* req_data, size_t data_len, uint32_t& tag, uint32_t& est_timeout);
   bool shareContactZeroHop(const ContactInfo& contact);
   uint8_t exportContact(const ContactInfo& contact, uint8_t dest_buf[]);
   bool importContact(const uint8_t src_buf[], uint8_t len);
