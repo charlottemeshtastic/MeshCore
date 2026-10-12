@@ -86,6 +86,11 @@ public:
   static size_t writePath(uint8_t* dest, const uint8_t* src, uint8_t path_len);  // returns byte length written
   static bool isValidPathLen(uint8_t path_len);
 
+  /** Read encoded metadata and path bytes only when the complete path is available.
+   * dest must hold MAX_PATH_SIZE bytes. Outputs remain unchanged on failure.
+   */
+  static bool readPath(uint8_t dest[], const uint8_t src[], size_t available, uint8_t& path_len);
+
   void markDoNotRetransmit() { header = 0xFF; }
   bool isMarkedDoNotRetransmit() const { return header == 0xFF; }
 
@@ -98,17 +103,18 @@ public:
 
   /**
    * \brief  save entire packet as a blob
-   * \param dest  (OUT) destination buffer (assumed to be MAX_MTU_SIZE)
-   * \returns  the packet length
+   * \param dest  (OUT) destination buffer
+   * \param capacity  writable bytes in dest; defaults to MAX_TRANS_UNIT
+   * \returns  the packet length, or zero for invalid data or insufficient capacity
    */
-  uint8_t writeTo(uint8_t dest[]) const;
+  uint8_t writeTo(uint8_t dest[], size_t capacity = MAX_TRANS_UNIT) const;
 
   /**
    * \brief  restore this packet from a blob (as created using writeTo())
    * \param  src  (IN) buffer containing blob
    * \param  len  the packet length (as returned by writeTo())
    */
-  bool readFrom(const uint8_t src[], uint8_t len);
+  bool readFrom(const uint8_t src[], size_t len);
 };
 
 }

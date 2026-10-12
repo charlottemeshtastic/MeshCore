@@ -71,7 +71,7 @@ void RS232Bridge::loop() {
         uint16_t len = (_rx_buffer[2] << 8) | _rx_buffer[3];
 
         // Validate length field
-        if (len > (MAX_TRANS_UNIT + 1)) {
+        if (len > MAX_TRANS_UNIT) {
           BRIDGE_DEBUG_PRINTLN("RX invalid length %d, resetting\n", len);
           _rx_buffer_pos = 0; // Invalid length, reset
           continue;
@@ -116,16 +116,16 @@ void RS232Bridge::sendPacket(mesh::Packet *packet) {
   }
 
   if (!_seen_packets.wasSeen(packet)) {
-    _seen_packets.markSeen(packet);
 
     uint8_t buffer[MAX_SERIAL_PACKET_SIZE];
     uint16_t len = packet->writeTo(buffer + 4);
 
     // Check if packet fits within our maximum payload size
-    if (len > (MAX_TRANS_UNIT + 1)) {
+    if (len == 0 || len > MAX_TRANS_UNIT) {
       BRIDGE_DEBUG_PRINTLN("TX packet too large (payload=%d, max=%d)\n", len, MAX_TRANS_UNIT + 1);
       return;
     }
+    _seen_packets.markSeen(packet);
 
     // Build packet header
     buffer[0] = (BRIDGE_PACKET_MAGIC >> 8) & 0xFF; // Magic high byte

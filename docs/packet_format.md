@@ -45,9 +45,11 @@ This is the protocol level packet structure used in MeshCore firmware v1.12.0
         - `0x02`/`0b10` - v3 - Future version
         - `0x03`/`0b11` - v4 - Future version
 - `transport_codes` - 4 bytes (optional)
+    - Both codes use little-endian byte order on radio and bridge transports
     - Only present for `ROUTE_TYPE_TRANSPORT_FLOOD` and `ROUTE_TYPE_TRANSPORT_DIRECT`
     - `transport_code_1` - 2 bytes - `uint16_t` - calculated from region scope
     - `transport_code_2` - 2 bytes - `uint16_t` - reserved
+    - Derivation, reserved values and policy are described in the [V1 transport scope contract](./rfcs/transport-scopes.md)
 - `path_length` - 1 byte - Encoded path metadata
     - Bits 0-5 store path hash count / hop count (`0-63`)
     - Bits 6-7 store path hash size minus 1
