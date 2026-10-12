@@ -147,45 +147,8 @@ void Dispatcher::loop() {
 }
 
 bool Dispatcher::tryParsePacket(Packet* pkt, const uint8_t* raw, int len) {
-  int i = 0;
-
-  pkt->header = raw[i++];
-  if (pkt->getPayloadVer() > PAYLOAD_VER_1) {
-    MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): unsupported packet version", getLogDateTime());
-    return false;
-  }
-
-  if (pkt->hasTransportCodes()) {
-    memcpy(&pkt->transport_codes[0], &raw[i], 2); i += 2;
-    memcpy(&pkt->transport_codes[1], &raw[i], 2); i += 2;
-  } else {
-    pkt->transport_codes[0] = pkt->transport_codes[1] = 0;
-  }
-
-  pkt->path_len = raw[i++];
-  uint8_t path_mode = pkt->path_len >> 6;  // upper 2 bits (legacy firmware: 00)
-  if (path_mode == 3) {   // Reserved for future
-    MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): unsupported path mode: 3", getLogDateTime());
-    return false;
-  }
-
-  uint8_t path_byte_len = (pkt->path_len & 63) * pkt->getPathHashSize();
-  if (path_byte_len > MAX_PATH_SIZE || i + path_byte_len > len) {
-    MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): partial or corrupt packet received, len=%d", getLogDateTime(), len);
-    return false;
-  }
-
-  memcpy(pkt->path, &raw[i], path_byte_len); i += path_byte_len;
-
-  pkt->payload_len = len - i;  // payload is remainder
-  if (pkt->payload_len > sizeof(pkt->payload)) {
-    MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): packet payload too big, payload_len=%d", getLogDateTime(), (uint32_t)pkt->payload_len);
-    return false;
-  }
-
-  memcpy(pkt->payload, &raw[i], pkt->payload_len);
-
-  return true;  // success
+  if (len < 0) return false;
+  return pkt->readFrom(raw, static_cast<size_t>(len));
 }
 
 void Dispatcher::checkRecv() {
@@ -306,24 +269,13 @@ void Dispatcher::checkSend() {
 
   outbound = _mgr->getNextOutbound(_ms->getMillis());
   if (outbound) {
-    int len = 0;
     uint8_t raw[MAX_TRANS_UNIT];
-
-    raw[len++] = outbound->header;
-    if (outbound->hasTransportCodes()) {
-      memcpy(&raw[len], &outbound->transport_codes[0], 2); len += 2;
-      memcpy(&raw[len], &outbound->transport_codes[1], 2); len += 2;
-    }
-    raw[len++] = outbound->path_len;
-    len += Packet::writePath(&raw[len], outbound->path, outbound->path_len);
-
-    if (len + outbound->payload_len > MAX_TRANS_UNIT) {
-      MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): FATAL: Invalid packet queued... too long, len=%d", getLogDateTime(), len + outbound->payload_len);
+    int len = outbound->writeTo(raw);
+    if (len == 0) {
+      MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): invalid packet queued", getLogDateTime());
       _mgr->free(outbound);
       outbound = NULL;
     } else {
-      memcpy(&raw[len], outbound->payload, outbound->payload_len); len += outbound->payload_len;
-
       uint32_t max_airtime = _radio->getEstAirtimeFor(len)*3/2;
       outbound_start = _ms->getMillis();
       bool success = _radio->startSendRaw(raw, len);

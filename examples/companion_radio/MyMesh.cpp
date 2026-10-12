@@ -1342,9 +1342,13 @@ void MyMesh::handleCmdFrame(size_t len) {
         pkt->header |= ROUTE_TYPE_FLOOD; // would normally be sent in this mode
 
         out_frame[0] = RESP_CODE_EXPORT_CONTACT;
-        uint8_t out_len = pkt->writeTo(&out_frame[1]);
+        uint8_t out_len = pkt->writeTo(&out_frame[1], sizeof(out_frame) - 1);
         releasePacket(pkt); // undo the obtainNewPacket()
-        _serial->writeFrame(out_frame, out_len + 1);
+        if (out_len > 0) {
+          _serial->writeFrame(out_frame, out_len + 1);
+        } else {
+          writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+        }
       } else {
         writeErrFrame(ERR_CODE_TABLE_FULL); // Error
       }

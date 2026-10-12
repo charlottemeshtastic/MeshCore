@@ -168,10 +168,10 @@ void ESPNowBridge::sendPacket(mesh::Packet *packet) {
   }
 
   if (!_seen_packets.wasSeen(packet)) {
-    _seen_packets.markSeen(packet);
     // Create a temporary buffer just for size calculation and reuse for actual writing
     uint8_t sizingBuffer[MAX_PAYLOAD_SIZE];
-    uint16_t meshPacketLen = packet->writeTo(sizingBuffer);
+    uint16_t meshPacketLen = packet->writeTo(sizingBuffer, sizeof(sizingBuffer));
+    if (meshPacketLen == 0) return;
 
     // Check if packet fits within our maximum payload size
     if (meshPacketLen > MAX_PAYLOAD_SIZE) {
@@ -179,6 +179,7 @@ void ESPNowBridge::sendPacket(mesh::Packet *packet) {
                            MAX_PAYLOAD_SIZE);
       return;
     }
+    _seen_packets.markSeen(packet);
 
     uint8_t buffer[MAX_ESPNOW_PACKET_SIZE];
 
