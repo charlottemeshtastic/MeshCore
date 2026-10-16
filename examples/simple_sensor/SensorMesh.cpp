@@ -101,6 +101,10 @@ static float findTelemValue(const uint8_t* buf, uint8_t size, uint8_t channel, u
 
 /* ------------------ end Cayenne LPP helpers ----------------------*/
 
+bool SensorMesh::isListedClient(const ClientInfo* c) {
+  return c->permissions != 0;   // skip deleted entries
+}
+
 bool SensorMesh::telemHasChanged(ClientInfo* c) {
   auto buf = telemetry.getBuffer();
   uint8_t size = telemetry.getSize();
@@ -199,15 +203,15 @@ uint8_t SensorMesh::handleRequest(ClientInfo* from, uint32_t sender_timestamp, u
   if (req_type == REQ_TYPE_GET_ACCESS_LIST && (perms & PERM_ACL_ROLE_MASK) == PERM_ACL_ADMIN) {
     uint8_t res1 = payload[0];   // reserved for future  (extra query params)
     uint8_t res2 = payload[1];
-    if (res1 == 0 && res2 == 0) {
-      uint8_t ofs = 4;
-      for (int i = 0; i < acl.getNumClients() && ofs + 7 <= sizeof(reply_data) - 4; i++) {
-        auto c = acl.getClientByIdx(i);
-        if (c->permissions == 0) continue;  // skip deleted entries
-        memcpy(&reply_data[ofs], c->id.pub_key, 6); ofs += 6;  // just 6-byte pub_key prefix
-        reply_data[ofs++] = c->permissions;
-      }
-      return ofs;
+    if (res1 == 0 && res2 == 0) {   // first entries only, as many as a companion can forward
+      int total;
+      return 4 + acl.writeAccessList(&reply_data[4], ACL_LIST_MAX_REPLY_DATA, 0, SensorMesh::isListedClient, &total);
+    } else if (res1 == ACL_LIST_PAGED) {   // reply: [start index][total count] then entries from 'start' (res2)
+      int total;
+      int len = acl.writeAccessList(&reply_data[6], ACL_LIST_MAX_REPLY_DATA - 2, res2, SensorMesh::isListedClient, &total);
+      reply_data[4] = res2;
+      reply_data[5] = total > 255 ? 255 : total;
+      return 6 + len;
     }
   }
   if (req_type == REQ_TYPE_SUBSCRIBE && payload_len >= 8 && (perms & PERM_ACL_ROLE_MASK) >= PERM_ACL_READ_ONLY) {

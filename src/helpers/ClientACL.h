@@ -12,6 +12,14 @@
 
 #define OUT_PATH_UNKNOWN  0xFF
 
+#define ACL_MIN_PREFIX_LEN  6   // shortest pubkey prefix that may change an existing entry's permissions
+#define ACL_LIST_ENTRY_SIZE 7   // GET_ACCESS_LIST entry: 6-byte pubkey prefix + permissions
+// A GET_ACCESS_LIST reply reaches the client app inside a companion frame (6 header bytes, MAX_FRAME_SIZE 176),
+// and the companion forwards it padded to the 16-byte cipher block. So the 4-byte tag plus data must stay
+// within 160 bytes: at most 156 data bytes, ie. 22 entries (154 bytes, or 156 with the paged header).
+#define ACL_LIST_MAX_REPLY_DATA  156
+#define ACL_LIST_PAGED      1   // GET_ACCESS_LIST query flag: reply starts at an index and carries the total count
+
 struct ClientInfo {
   mesh::Identity id;
   uint8_t permissions;
@@ -62,6 +70,10 @@ public:
   ClientInfo* getClient(const uint8_t* pubkey, int key_len);
   ClientInfo* putClient(const mesh::Identity& id, uint8_t init_perms);
   bool applyPermissions(const mesh::LocalIdentity& self_id, const uint8_t* pubkey, int key_len, uint8_t perms);
+
+  // Writes GET_ACCESS_LIST entries for clients passing 'include', skipping the first 'start' of them,
+  // while they fit in 'max_len' bytes. Returns bytes written; sets *total to the number passing 'include'.
+  int writeAccessList(uint8_t* dest, int max_len, int start, bool (*include)(const ClientInfo*), int* total);
 
   int getNumClients() const { return num_clients; }
   ClientInfo* getClientByIdx(int idx) { return &clients[idx]; }

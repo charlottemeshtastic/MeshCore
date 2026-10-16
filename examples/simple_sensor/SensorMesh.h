@@ -88,6 +88,7 @@ public:
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
 
 protected:
+  static bool isListedClient(const ClientInfo* c);   // which ACL entries GET_ACCESS_LIST reports
   // current telemetry data queries
   float getVoltage(uint8_t channel) { return getTelemValue(channel, LPP_VOLTAGE); }
   float getCurrent(uint8_t channel) { return getTelemValue(channel, LPP_CURRENT); }

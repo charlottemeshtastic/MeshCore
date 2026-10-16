@@ -38,6 +38,10 @@ struct ServerStats {
   uint16_t n_posted, n_post_push;
 };
 
+bool MyMesh::isListedClient(const ClientInfo* c) {
+  return c->isAdmin();   // only Admins are persisted, so only they are listed
+}
+
 void MyMesh::addPost(ClientInfo *client, const char *postData) {
   storePost(client->id, postData);
 }
@@ -202,15 +206,15 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
   if (payload[0] == REQ_TYPE_GET_ACCESS_LIST && sender->isAdmin()) {
     uint8_t res1 = payload[1];   // reserved for future  (extra query params)
     uint8_t res2 = payload[2];
-    if (res1 == 0 && res2 == 0) {
-      uint8_t ofs = 4;
-      for (int i = 0; i < acl.getNumClients() && ofs + 7 <= sizeof(reply_data) - 4; i++) {
-        auto c = acl.getClientByIdx(i);
-        if (!c->isAdmin()) continue;  // skip non-Admin entries
-        memcpy(&reply_data[ofs], c->id.pub_key, 6); ofs += 6;  // just 6-byte pub_key prefix
-        reply_data[ofs++] = c->permissions;
-      }
-      return ofs;
+    if (res1 == 0 && res2 == 0) {   // first entries only, as many as a companion can forward
+      int total;
+      return 4 + acl.writeAccessList(&reply_data[4], ACL_LIST_MAX_REPLY_DATA, 0, MyMesh::isListedClient, &total);
+    } else if (res1 == ACL_LIST_PAGED) {   // reply: [start index][total count] then entries from 'start' (res2)
+      int total;
+      int len = acl.writeAccessList(&reply_data[6], ACL_LIST_MAX_REPLY_DATA - 2, res2, MyMesh::isListedClient, &total);
+      reply_data[4] = res2;
+      reply_data[5] = total > 255 ? 255 : total;
+      return 6 + len;
     }
   }
   return 0; // unknown command

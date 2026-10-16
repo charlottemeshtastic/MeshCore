@@ -128,6 +128,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool isLooped(const mesh::Packet* packet, const uint8_t max_counters[]);
 
 protected:
+  static bool isListedClient(const ClientInfo* c);   // which ACL entries GET_ACCESS_LIST reports
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
   }

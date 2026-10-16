@@ -131,7 +131,16 @@ bool ClientACL::applyPermissions(const mesh::LocalIdentity& self_id, const uint8
       i++;
     }
   } else {
-    if (key_len < PUB_KEY_SIZE) return false;   // need complete pubkey when adding/modifying
+    if (key_len < PUB_KEY_SIZE) {
+      // a partial pubkey (eg. the 6-byte prefix from GET_ACCESS_LIST) can only modify an existing entry,
+      // and must be long enough not to match the wrong client
+      if (key_len < ACL_MIN_PREFIX_LEN) return false;
+      c = getClient(pubkey, key_len);
+      if (c == NULL) return false;   // adding a new entry needs the complete pubkey
+
+      c->permissions = perms;
+      return true;
+    }
 
     mesh::Identity id(pubkey);
     c = putClient(id, 0);
@@ -140,4 +149,21 @@ bool ClientACL::applyPermissions(const mesh::LocalIdentity& self_id, const uint8
     self_id.calcSharedSecret(c->shared_secret, pubkey);
   }
   return true;
+}
+
+int ClientACL::writeAccessList(uint8_t* dest, int max_len, int start, bool (*include)(const ClientInfo*), int* total) {
+  int written = 0;
+  int n = 0;
+  for (int i = 0; i < num_clients; i++) {
+    const ClientInfo* c = &clients[i];
+    if (!include(c)) continue;
+    if (n++ < start) continue;
+    if (written + ACL_LIST_ENTRY_SIZE <= max_len) {
+      memcpy(&dest[written], c->id.pub_key, ACL_LIST_ENTRY_SIZE - 1);   // just the pub_key prefix
+      dest[written + ACL_LIST_ENTRY_SIZE - 1] = c->permissions;
+      written += ACL_LIST_ENTRY_SIZE;
+    }
+  }
+  *total = n;
+  return written;
 }

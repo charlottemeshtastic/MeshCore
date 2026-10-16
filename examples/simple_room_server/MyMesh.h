@@ -129,6 +129,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
 
 protected:
+  static bool isListedClient(const ClientInfo* c);   // which ACL entries GET_ACCESS_LIST reports
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
   }
